@@ -1,0 +1,314 @@
+esphome:
+  name: esp32-s3-wake-word-timer-2
+  friendly_name: ESP32-S3-Wake-Word-Timer-2
+  platformio_options:
+    board_build.flash_mode: dio
+  on_boot:
+    - light.turn_on:
+        id: led_ww
+        blue: 100%
+        brightness: 60%
+        effect: fast pulse
+
+esp32:
+  board: esp32-s3-devkitc-1
+  framework:
+    type: esp-idf
+
+    sdkconfig_options:
+      CONFIG_ESP32S3_DEFAULT_CPU_FREQ_240: "y"
+      CONFIG_ESP32S3_DATA_CACHE_64KB: "y"
+      CONFIG_ESP32S3_DATA_CACHE_LINE_64B: "y"
+      CONFIG_AUDIO_BOARD_CUSTOM: "y"
+   
+psram:
+  mode: quad # Please change this to quad for N8R2 and octal for N16R8
+  speed: 80MHz
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: "IAlel5HjWo64faleqvcBht0dh289EkUk7ghtC4fyNig="
+  on_client_connected:
+        then:
+          - delay: 50ms
+          - light.turn_off: led_ww
+          - micro_wake_word.start:
+  on_client_disconnected:
+        then:
+          - voice_assistant.stop: 
+
+logger:
+
+ota:
+  - platform: esphome
+    password: "1245211a05eef56614a2ef5a3f3e971c"
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "Esp32-S3-Wake-Word"
+    password: "LJfUrdJk3svP"
+
+captive_portal:
+
+
+
+button:
+  - platform: restart
+    name: "Restart"
+    id: but_rest
+
+switch:
+  - platform: template
+    id: mute
+    name: mute
+    optimistic: true
+    on_turn_on: 
+      - micro_wake_word.stop:
+      - voice_assistant.stop:
+      - light.turn_on:
+          id: led_ww           
+          red: 100%
+          green: 0%
+          blue: 0%
+          brightness: 60%
+          effect: fast pulse 
+      - light.turn_on:
+          id: led_strip           
+          red: 100%
+          green: 0%
+          blue: 0%
+          brightness: 60%
+          effect: fast pulse 
+          
+      - delay: 2s
+      - light.turn_off:
+          id: led_ww
+      - light.turn_off:
+          id: led_strip
+
+      - light.turn_on:
+          id: led_ww          
+          red: 100%
+          green: 0%
+          blue: 0%
+          brightness: 30%
+      - light.turn_on:
+          id: led_strip           
+          red: 100%
+          green: 0%
+          blue: 0%
+          brightness: 30%
+
+    on_turn_off:
+      - micro_wake_word.start:
+      - light.turn_on:
+          id: led_ww           
+          red: 0%
+          green: 100%
+          blue: 0%
+          brightness: 60%
+          effect: fast pulse 
+      - light.turn_on:
+          id: led_strip  
+          red: 0%
+          green: 100%
+          blue: 0%
+          brightness: 60%
+          effect: fast pulse 
+      - delay: 2s
+      - light.turn_off:
+          id: led_strip
+      - light.turn_off:
+          id: led_ww
+  - platform: template
+    id: timer_ringing
+    optimistic: true
+    internal: False
+    name: "Timer Ringing"
+    restore_mode: ALWAYS_OFF
+
+binary_sensor:
+  - platform: gpio
+    id: button01
+    name: "Mute Button" # Physical Mute switch
+    pin:
+      number: GPIO10  #Physical Button connected to this pin.
+      inverted: True
+      mode:
+        input: True
+        pullup: True
+    on_press: 
+      if:
+        condition:
+          switch.is_on: timer_ringing 
+        then:
+          - switch.turn_off: timer_ringing
+        else:
+          - switch.toggle: mute
+   
+light:
+  - platform: esp32_rmt_led_strip
+    id: led_ww
+    rgb_order: GRB
+    pin: GPIO48
+    num_leds: 1
+    rmt_channel: 0
+    chipset: ws2812
+    name: "On board light"
+    effects:
+      - pulse:
+      - pulse:
+          name: "Fast Pulse"
+          transition_length: 0.5s
+          update_interval: 0.5s
+          min_brightness: 0%
+          max_brightness: 100%
+
+  - platform: esp32_rmt_led_strip
+    id: led_strip
+    rgb_order: GRB
+    pin: GPIO09
+    num_leds: 6
+    rmt_channel: 1
+    chipset: ws2812
+    name: "Led Strip"
+    effects:
+      - pulse:
+      - pulse:
+          name: "Fast Pulse"
+          transition_length: 0.5s
+          update_interval: 0.5s
+          min_brightness: 0%
+          max_brightness: 100%
+      - addressable_scan:
+          name: "Scan Effect With Custom Values"
+          move_interval: 5ms
+          scan_width: 10
+
+          
+          
+ # Audio and Voice Assistant Config          
+i2s_audio:
+  - id: i2s_in # For microphone
+    i2s_lrclk_pin: GPIO3  #WS 
+    i2s_bclk_pin: GPIO2 #SCK
+
+  - id: i2s_speaker #For Speaker
+    i2s_lrclk_pin: GPIO6  #LRC 
+    i2s_bclk_pin: GPIO7 #BLCK
+
+microphone:
+  - platform: i2s_audio
+    id: va_mic
+    adc_type: external
+    i2s_din_pin: GPIO4 #SD
+    channel: left
+    pdm: false
+    i2s_audio_id: i2s_in
+    bits_per_sample: 32bit
+    
+speaker:
+    platform: i2s_audio
+    id: va_speaker
+    i2s_audio_id: i2s_speaker
+    dac_type: external
+    i2s_dout_pin: GPIO8   #  DIN Pin of the MAX98357A Audio Amplifier
+    channel: mono
+
+micro_wake_word:
+  on_wake_word_detected:
+    
+    - voice_assistant.start:
+        wake_word: !lambda return wake_word;
+        silence_detection: true
+    - light.turn_on:
+        id: led_ww           
+        red: 30%
+        green: 30%
+        blue: 70%
+        brightness: 60%
+        effect: fast pulse 
+    - light.turn_on:
+        id: led_strip
+        effect: "Scan Effect With Custom Values"
+        red: 80%
+        green: 0%
+        blue: 80%
+        brightness: 80%
+  models:
+    - model: hey_jarvis
+    
+voice_assistant:
+  id: va
+  microphone: va_mic
+  auto_gain: 31dBFS
+  noise_suppression_level: 2
+  volume_multiplier: 4.0
+  speaker: va_speaker
+  on_stt_end:
+       then: 
+         - light.turn_off: led_ww
+         - light.turn_off: led_strip
+  on_error:
+          - micro_wake_word.start:  
+  on_end:
+        then:
+          - light.turn_off: led_ww
+          - light.turn_off: led_strip
+          - wait_until:
+              not:
+                voice_assistant.is_running:
+          - micro_wake_word.start:
+
+
+  on_timer_finished:
+    - micro_wake_word.stop:
+    - voice_assistant.stop:
+    - switch.turn_on: timer_ringing
+    - wait_until:
+        not:
+          microphone.is_capturing:
+    
+    - wait_until:
+        not:
+          micro_wake_word.is_running:
+    - light.turn_on:
+        id: led_strip
+        effect: "Scan Effect With Custom Values"
+        red: 80%
+        green: 0%
+        blue: 30%
+        brightness: 80%
+    
+    - lambda: id(va_speaker).play(id(timer_finished_wave_file), sizeof(id(timer_finished_wave_file)));
+    - micro_wake_word.start:
+    - wait_until:
+        and:
+          - micro_wake_word.is_running:
+
+    - while:
+        condition:
+          switch.is_on: timer_ringing
+        then:
+          - lambda: id(va_speaker).play(id(timer_finished_wave_file), sizeof(id(timer_finished_wave_file)));
+          - delay: 2s
+    - wait_until:
+        not:
+          speaker.is_playing:
+    
+    - light.turn_off: led_strip
+    - micro_wake_word.start:
+
+external_components:
+  - source: github://jesserockz/esphome-components
+    components: [file]
+    refresh: 0s
+
+file: 
+  - id: timer_finished_wave_file
+    file: https://github.com/esphome/firmware/raw/main/voice-assistant/sounds/timer_finished.wav
