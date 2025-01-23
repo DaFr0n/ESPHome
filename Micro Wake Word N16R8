@@ -1,4 +1,5 @@
 esphome:
+  #compile_process_limit: 1
   name: esp32-s3-wake-word-timer
   friendly_name: ESP32-S3-Wake-Word-Timer
   platformio_options:
